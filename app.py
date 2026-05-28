@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import xml.etree.ElementTree as ET
+import requests
 import datetime
 
 # --- 1. PAGE CONFIGURATION ---
@@ -12,9 +14,57 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. DATA GENERATION ---
+# --- 2. LIVE NEWS ENGINE (RSS SCRAPER) ---
+@st.cache_data(ttl=900)  # Caches news for 15 minutes to stay real-time without lagging your iPad
+def fetch_all_daily_news(country):
+    """
+    Scrapes and parses the real-time Google News RSS Index 
+    for comprehensive real estate coverage.
+    """
+    query_mapping = {
+        'India': 'India+real+estate+OR+property+market+OR+housing',
+        'Dubai': 'Dubai+real+estate+OR+property+OR+DLD+housing',
+        'United States': 'US+real+estate+OR+housing+market+OR+mortgage+rates',
+        'Singapore': 'Singapore+property+market+OR+URA+resale+condo',
+        'China': 'China+property+crisis+OR+housing+liquidity+OR+real+estate'
+    }
+    
+    query = query_mapping.get(country, 'real+estate')
+    rss_url = f"https://google.com{query}&hl=en-US&gl=US&ceid=US:en"
+    
+    articles = []
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15'}
+        response = requests.get(rss_url, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            root = ET.fromstring(response.content)
+            for item in root.findall('.//item')[:15]:  # Pulls up to 15 matching daily articles per country
+                title = item.find('title').text if item.find('title') is not None else "No Title"
+                link = item.find('link').text if item.find('link') is not None else "#"
+                pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ""
+                source = item.find('source').text if item.find('source') is not None else "Search Engine"
+                
+                # Split source name out of Google News title formatting if necessary
+                if " - " in title:
+                    title_clean = title.rsplit(" - ", 1)[0]
+                else:
+                    title_clean = title
+                    
+                articles.append({
+                    "title": title_clean,
+                    "link": link,
+                    "source": source,
+                    "time": pub_date[:16]  # Trims down to Day, Date, and Time
+                })
+    except Exception as e:
+        return [{"title": f"Live feed offline temporarily. Error: {str(e)}", "link": "#", "source": "System", "time": "Now"}]
+        
+    return articles if articles else [{"title": "No active articles indexed in the last 24 hours.", "link": "#", "source": "System", "time": "Today"}]
+
+# --- 3. HARD DATA STRUCTURAL ENGINE ---
 @st.cache_data(ttl=3600)
-def load_dashboard_data():
+def load_market_metrics():
     regions = ['India', 'Dubai', 'United States', 'Singapore', 'China']
     metrics_data = {
         'Region': regions,
@@ -23,49 +73,26 @@ def load_dashboard_data():
         'Market Sentiment': ['Bullish', 'Very Bullish', 'Neutral', 'Stable', 'Cautious'],
         'Primary Driver': ['Luxury Residential', 'Foreign Capital', 'High Mortgage Rates', 'Domestic Upgraders', 'Policy Support']
     }
-    df_metrics = pd.DataFrame(metrics_data)
-    
-    news_feed = {
-        'India': [
-            {"title": "Mumbai luxury residential sales jump 18% YoY", "source": "Livemint", "time": "2 hours ago"},
-            {"title": "GCC expansion drives Grade-A office demand in Bangalore", "source": "Economic Times", "time": "5 hours ago"}
-        ],
-        'Dubai': [
-            {"title": "Palm Jumeirah villa breaches record price per sq ft", "source": "Khaleej Times", "time": "1 hour ago"},
-            {"title": "DLD reports $1.2B in off-plan transactions today", "source": "Bloomberg Middle East", "time": "4 hours ago"}
-        ],
-        'United States': [
-            {"title": "30-year fixed mortgage rates tick up to 6.8%", "source": "FRED / Reuters", "time": "3 hours ago"},
-            {"title": "Commercial real estate workouts rise in NYC and SF", "source": "Wall Street Journal", "time": "7 hours ago"}
-        ],
-        'Singapore': [
-            {"title": "HDB resale prices show steady growth despite global slowdown", "source": "Straits Times", "time": "30 mins ago"},
-            {"title": "ABSD impact keeps foreign retail property buyers at bay", "source": "Channel NewsAsia", "time": "6 hours ago"}
-        ],
-        'China': [
-            {"title": "Beijing rolls out new liquidity support for stalled housing projects", "source": "Caixin", "time": "1 hour ago"},
-            {"title": "Tier-1 cities show mild stabilization; Tier-3/4 vacancies high", "source": "South China Morning Post", "time": "8 hours ago"}
-        ]
-    }
-    return df_metrics, news_feed
+    return pd.DataFrame(metrics_data)
 
-df_metrics, news_feed = load_dashboard_data()
+df_metrics = load_market_metrics()
 
-# --- 3. SIDEBAR NAVIGATION ---
+# --- 4. SIDEBAR NAVIGATION ---
 st.sidebar.title("🏢 Global Property Hub")
-st.sidebar.markdown(f"**Last updated:** {datetime.date.today().strftime('%B %d, %Y')}")
+st.sidebar.markdown(f"**Live Feed Matrix**\nAs of: {datetime.date.today().strftime('%B %d, %Y')}")
 selected_region = st.sidebar.selectbox(
-    "Filter News Focus",
+    "Select Target Market Filter",
     options=["All Regions", "India", "Dubai", "United States", "Singapore", "China"]
 )
+st.sidebar.caption("💡 Tip: Tap an article headline anywhere on your iPad screen to open the direct news source report.")
 
-# --- 4. HEADER ---
-st.title("🌐 Global Real Estate Daily Dashboard")
-st.markdown("Automated strategic cross-border real estate performance and news tracker.")
+# --- 5. DASHBOARD HEADER ---
+st.title("🌐 Global Real Estate Live News Aggregator")
+st.markdown("Streaming comprehensive property market press, transaction reports, and cross-border performance trends.")
 st.markdown("---")
 
-# --- 5. KPI CARDS ---
-st.subheader("📊 Cross-Border Flash Metrics")
+# --- 6. KPI FLASH CARDS ---
+st.subheader("📊 Cross-Border Performance Flash")
 kpi_cols = st.columns(5)
 flags = {"India": "🇮🇳", "Dubai": "🇦🇪", "United States": "🇺🇸", "Singapore": "🇸🇬", "China": "🇨🇳"}
 
@@ -82,8 +109,8 @@ for idx, row in df_metrics.iterrows():
 
 st.markdown("---")
 
-# --- 6. DATA VISUALIZATION ---
-st.subheader("📈 Global Market Comparison Matrix")
+# --- 7. DATA VISUALIZATION MATRIX ---
+st.subheader("📈 Capital Appreciation vs Yield Analysis")
 fig = make_subplots(specs=[[{"secondary_y": True}]])
 
 fig.add_trace(
@@ -113,32 +140,41 @@ fig.add_trace(
     secondary_y=True,
 )
 
-fig.update_layout(
-    title_text="Capital Appreciation vs Gross Rental Yields",
-    hovermode="x unified"
-)
+fig.update_layout(title_text="Macro Performance Metrics", hovermode="x unified")
 st.plotly_chart(fig, use_container_width=True)
 
 st.markdown("---")
 
-# --- 7. NEWS FEEDS ---
-st.subheader("📰 Regional News Briefs & Analysis")
+# --- 8. COMPREHENSIVE DAILY NEWS FEED GENERATOR ---
+st.subheader("📰 Scrollable Daily Real Estate News Streams")
+
 regions_to_display = df_metrics['Region'].tolist() if selected_region == "All Regions" else [selected_region]
 
 for region in regions_to_display:
-    st.markdown(f"#### {flags[region]} {region} Market Update")
-    col_analysis, col_news = st.columns(2)
-    reg_row = df_metrics[df_metrics['Region'] == region].iloc[0]
+    st.markdown(f"### {flags[region]} {region} Comprehensive Market Stream")
     
-    with col_analysis:
-        st.markdown(f"**Primary Driver:** `{reg_row['Primary Driver']}`")
+    # Load the live aggregate data on demand
+    news_stream = fetch_all_daily_news(region)
+    
+    # Generate a layout partition: Left is current analytical stats, Right is infinite news stream box
+    col_stats, col_feed = st.columns([1, 2])
+    
+    with col_stats:
+        reg_row = df_metrics[df_metrics['Region'] == region].iloc[0]
+        st.info(f"**Core Market Indicators:**\n* **Primary Vector:** {reg_row['Primary Driver']}\n* **Sentiment Structure:** {reg_row['Market Sentiment']}")
         if reg_row['YoY Capital Appreciation (%)'] > 0:
-            st.success(f"Market shows steady upward asset expansion.")
+            st.success("Demand environment remains constructive for core transactions.")
         else:
-            st.error(f"Market structure undergoing correction cycles.")
+            st.warning("Asset repricing conditions present entry value opportunities.")
             
-    with col_news:
-        for article in news_feed[region]:
-            st.markdown(f"🔹 **{article['title']}**")
-            st.caption(f"Source: {article['source']} • {article['time']}")
+    with col_feed:
+        # We put news into an scrollable UI window container block to handle high volumes elegantly on mobile touchscreens
+        with st.container(height=350):
+            for article in news_stream:
+                st.markdown(f"🔗 **[{article['title']}]({article['link']})**")
+                st.caption(f"📰 {article['source']} • 🕒 {article['time']}")
+                st.markdown("<hr style='margin:2px 0px; opacity:0.2;'>", unsafe_allow_html=True)
+                
+    st.markdown("<br>", unsafe_allow_html=True)
+
 

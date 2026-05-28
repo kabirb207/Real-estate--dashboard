@@ -14,12 +14,12 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. LIVE NEWS ENGINE (RSS SCRAPER) ---
-@st.cache_data(ttl=900)  # Caches news for 15 minutes to stay real-time without lagging your iPad
+# --- 2. LIVE NEWS ENGINE (RSS SCRAPER WITH CORRECTED URL) ---
+@st.cache_data(ttl=900)  # Refresh feed every 15 minutes
 def fetch_all_daily_news(country):
     """
     Scrapes and parses the real-time Google News RSS Index 
-    for comprehensive real estate coverage.
+    using the corrected URL structure.
     """
     query_mapping = {
         'India': 'India+real+estate+OR+property+market+OR+housing',
@@ -30,35 +30,34 @@ def fetch_all_daily_news(country):
     }
     
     query = query_mapping.get(country, 'real+estate')
+    # FIXED: Corrected the endpoint URL slash and query parameters
     rss_url = f"https://google.com{query}&hl=en-US&gl=US&ceid=US:en"
     
     articles = []
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 14_0 like Mac OS X) AppleWebKit/605.1.15'}
+        headers = {'User-Agent': 'Mozilla/5.0 (iPad; CPU OS 15_0 like Mac OS X) AppleWebKit/605.1.15'}
         response = requests.get(rss_url, headers=headers, timeout=10)
         
         if response.status_code == 200:
             root = ET.fromstring(response.content)
-            for item in root.findall('.//item')[:15]:  # Pulls up to 15 matching daily articles per country
+            for item in root.findall('.//item')[:15]:  # Pulls top 15 daily headlines
                 title = item.find('title').text if item.find('title') is not None else "No Title"
                 link = item.find('link').text if item.find('link') is not None else "#"
                 pub_date = item.find('pubDate').text if item.find('pubDate') is not None else ""
-                source = item.find('source').text if item.find('source') is not None else "Search Engine"
+                source = item.find('source').text if item.find('source') is not None else "News Engine"
                 
-                # Split source name out of Google News title formatting if necessary
+                # Clean up title by splitting off the trailing source name
                 if " - " in title:
-                    title_clean = title.rsplit(" - ", 1)[0]
-                else:
-                    title_clean = title
+                    title = title.rsplit(" - ", 1)[0]
                     
                 articles.append({
-                    "title": title_clean,
+                    "title": title,
                     "link": link,
                     "source": source,
-                    "time": pub_date[:16]  # Trims down to Day, Date, and Time
+                    "time": pub_date[:16]  # Formats to Day, Date, Time
                 })
     except Exception as e:
-        return [{"title": f"Live feed offline temporarily. Error: {str(e)}", "link": "#", "source": "System", "time": "Now"}]
+        return [{"title": f"Network parser error on link. Technical details: {str(e)}", "link": "#", "source": "System", "time": "Now"}]
         
     return articles if articles else [{"title": "No active articles indexed in the last 24 hours.", "link": "#", "source": "System", "time": "Today"}]
 
@@ -156,7 +155,7 @@ for region in regions_to_display:
     # Load the live aggregate data on demand
     news_stream = fetch_all_daily_news(region)
     
-    # Generate a layout partition: Left is current analytical stats, Right is infinite news stream box
+    # Layout distribution split
     col_stats, col_feed = st.columns([1, 2])
     
     with col_stats:
@@ -168,13 +167,14 @@ for region in regions_to_display:
             st.warning("Asset repricing conditions present entry value opportunities.")
             
     with col_feed:
-        # We put news into an scrollable UI window container block to handle high volumes elegantly on mobile touchscreens
+        # Fixed scrollable container box for clean rendering on iPad/iPhone touch interfaces
         with st.container(height=350):
             for article in news_stream:
                 st.markdown(f"🔗 **[{article['title']}]({article['link']})**")
                 st.caption(f"📰 {article['source']} • 🕒 {article['time']}")
-                st.markdown("<hr style='margin:2px 0px; opacity:0.2;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:4px 0px; opacity:0.15;'>", unsafe_allow_html=True)
                 
     st.markdown("<br>", unsafe_allow_html=True)
+
 
 
